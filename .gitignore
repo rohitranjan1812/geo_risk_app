@@ -65,6 +65,16 @@ dist/
 # Docker
 docker-compose.override.yml
 
+# Backups
+backup_*.sql
+*.backup
+
+# SSL Certificates (don't commit!)
+*.pem
+*.key
+*.crt
+nginx/ssl/
+
 # OS
 .DS_Store
 Thumbs.db

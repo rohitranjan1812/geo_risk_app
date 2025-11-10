@@ -1,0 +1,91 @@
+{
+  "multiHazardScenarios": [
+    {
+      "name": "Earthquake Zone Assessment",
+      "location": {
+        "name": "Earthquake Test",
+        "latitude": 37.5,
+        "longitude": -122.0
+      },
+      "hazards": ["earthquake", "fire"],
+      "riskFactors": {
+        "population_density": 8000.0,
+        "building_code_rating": 6.0,
+        "infrastructure_quality": 6.0
+      },
+      "expectedMinScores": {
+        "earthquake": 50.0,
+        "fire": 40.0
+      }
+    },
+    {
+      "name": "Coastal Flood Risk",
+      "location": {
+        "name": "Coastal City",
+        "latitude": 30.0,
+        "longitude": -90.0
+      },
+      "hazards": ["flood", "storm"],
+      "riskFactors": {
+        "population_density": 3000.0,
+        "building_code_rating": 5.0,
+        "infrastructure_quality": 4.0
+      },
+      "expectedMinScores": {
+        "flood": 45.0,
+        "storm": 40.0
+      }
+    },
+    {
+      "name": "Wildfire Prone Area",
+      "location": {
+        "name": "Forest Edge",
+        "latitude": 34.0,
+        "longitude": -118.0
+      },
+      "hazards": ["fire", "earthquake", "storm"],
+      "riskFactors": {
+        "population_density": 2000.0,
+        "building_code_rating": 7.0,
+        "infrastructure_quality": 6.5
+      },
+      "expectedMinScores": {
+        "fire": 30.0,
+        "earthquake": 35.0,
+        "storm": 25.0
+      }
+    },
+    {
+      "name": "All Hazards Critical",
+      "location": {
+        "name": "High Risk Zone",
+        "latitude": 35.0,
+        "longitude": -95.0
+      },
+      "hazards": ["earthquake", "flood", "fire", "storm"],
+      "riskFactors": {
+        "population_density": 10000.0,
+        "building_code_rating": 3.0,
+        "infrastructure_quality": 3.0
+      },
+      "expectedMinScores": {
+        "earthquake": 60.0,
+        "flood": 55.0,
+        "fire": 50.0,
+        "storm": 50.0
+      }
+    }
+  ],
+  "performanceTests": [
+    {
+      "name": "Single Location Assessment",
+      "maxLoadTime": 2000,
+      "maxAssessmentTime": 3000
+    },
+    {
+      "name": "Multiple Hazards",
+      "hazardCount": 4,
+      "maxProcessingTime": 5000
+    }
+  ]
+}

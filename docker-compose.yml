@@ -3,69 +3,106 @@ version: '3.8'
 services:
   # PostgreSQL Database
   db:
-    image: postgres:16-alpine
-    container_name: georisk-db
+    image: postgres:15-alpine
+    container_name: georisk_db
+    restart: unless-stopped
     environment:
-      POSTGRES_USER: georisk
-      POSTGRES_PASSWORD: georisk_password
-      POSTGRES_DB: georisk_db
-    ports:
-      - "5432:5432"
+      POSTGRES_USER: ${POSTGRES_USER:-georisk}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-georisk_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-georisk_db}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./deployment/scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./init-scripts:/docker-entrypoint-initdb.d
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U georisk"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-georisk}"]
       interval: 10s
       timeout: 5s
       retries: 5
     networks:
-      - georisk-network
+      - georisk_network
 
-  # Backend API
+  # FastAPI Backend
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: georisk-backend
+    container_name: georisk_backend
+    restart: unless-stopped
     environment:
-      DATABASE_URL: postgresql+asyncpg://georisk:georisk_password@db:5432/georisk_db
-      DATABASE_URL_SYNC: postgresql://georisk:georisk_password@db:5432/georisk_db
-      SECRET_KEY: dev-secret-key-change-in-production
-      CORS_ORIGINS: http://localhost:3000,http://localhost:80
-      DEBUG: "true"
-      ENVIRONMENT: development
-    ports:
-      - "8000:8000"
+      DATABASE_URL: postgresql://${POSTGRES_USER:-georisk}:${POSTGRES_PASSWORD:-georisk_dev_password}@db:5432/${POSTGRES_DB:-georisk_db}
+      BACKEND_CORS_ORIGINS: ${BACKEND_CORS_ORIGINS:-["http://localhost:3000","http://localhost"]}
+      SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-in-production}
+      DEBUG: ${DEBUG:-false}
     volumes:
       - ./backend:/app
-      - backend_logs:/app/logs
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
     depends_on:
       db:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
     networks:
-      - georisk-network
-    restart: unless-stopped
+      - georisk_network
+    command: >
+      sh -c "
+        echo 'Waiting for database...' &&
+        python init_db.py &&
+        uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+      "
 
-  # Frontend
+  # React Frontend
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    container_name: georisk-frontend
+    container_name: georisk_frontend
+    restart: unless-stopped
+    environment:
+      REACT_APP_API_URL: ${REACT_APP_API_URL:-/api}
     ports:
-      - "80:80"
-      - "3000:80"
+      - "${FRONTEND_PORT:-3000}:80"
     depends_on:
       - backend
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:80/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
     networks:
-      - georisk-network
+      - georisk_network
+
+  # Nginx Reverse Proxy
+  nginx:
+    image: nginx:alpine
+    container_name: georisk_nginx
     restart: unless-stopped
+    ports:
+      - "${NGINX_PORT:-80}:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+    depends_on:
+      - backend
+      - frontend
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:80/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - georisk_network
 
 volumes:
   postgres_data:
-  backend_logs:
+    driver: local
 
 networks:
-  georisk-network:
+  georisk_network:
     driver: bridge

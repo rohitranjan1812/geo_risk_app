@@ -1,0 +1,7 @@
+node_modules/
+test-results/
+playwright-report/
+screenshots/*.png
+videos/*.webm
+*.log
+package-lock.json

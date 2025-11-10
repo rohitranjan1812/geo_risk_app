@@ -1,3 +1,1 @@
-"""
-Integration tests placeholder
-"""
+"""Integration tests package."""

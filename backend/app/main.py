@@ -1,71 +1,87 @@
-"""
-FastAPI Application Entry Point
-"""
-
+"""Main FastAPI application."""
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from contextlib import asynccontextmanager
-import logging
-from typing import AsyncGenerator
 
-from app.config import settings
-from app.database import engine, Base
-from app.routes import health, risk_assessment
-
-# Configure logging
-logging.basicConfig(
-    level=getattr(logging, settings.LOG_LEVEL),
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+from app.core.config import settings
+from app.db import init_db
+from app.api import api_router
+from app.ws import stream_location_risk_updates, stream_regional_risk_visualization, stream_hazard_risk_heatmap
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncGenerator:
-    """Application lifespan events"""
-    logger.info("Starting GeoRisk API...")
-    
-    # Create database tables
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    
-    logger.info("Database tables created/verified")
+async def lifespan(app: FastAPI):
+    """Application lifespan events."""
+    # Startup
+    await init_db()
     yield
-    
-    logger.info("Shutting down GeoRisk API...")
-    await engine.dispose()
+    # Shutdown
+    pass
 
 
-# Create FastAPI application
 app = FastAPI(
-    title=settings.APP_NAME,
-    version=settings.APP_VERSION,
-    description="Geographic Risk Assessment API for analyzing natural hazard risks",
-    lifespan=lifespan,
-    docs_url=f"{settings.API_V1_PREFIX}/docs",
-    redoc_url=f"{settings.API_V1_PREFIX}/redoc",
-    openapi_url=f"{settings.API_V1_PREFIX}/openapi.json",
+    title=settings.app_name,
+    version=settings.app_version,
+    lifespan=lifespan
 )
 
-# Configure CORS
+# CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
-    allow_credentials=settings.CORS_CREDENTIALS,
-    allow_methods=settings.CORS_METHODS,
-    allow_headers=settings.CORS_HEADERS,
+    allow_origins=settings.cors_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
-# Include routers
-app.include_router(health.router, prefix=settings.API_V1_PREFIX, tags=["health"])
-app.include_router(risk_assessment.router, prefix=settings.API_V1_PREFIX, tags=["risk"])
+# Include API routes
+app.include_router(api_router, prefix=settings.api_prefix)
+
+
+# WebSocket endpoints for real-time visualization
+@app.websocket(f"{settings.api_prefix}/ws/location/{{location_id}}")
+async def websocket_location_updates(location_id: int, websocket):
+    """WebSocket endpoint for location-specific risk updates."""
+    from app.db import async_session
+    async with async_session() as db:
+        await stream_location_risk_updates(location_id, websocket, db)
+
+
+@app.websocket(f"{settings.api_prefix}/ws/region")
+async def websocket_region_visualization(
+    min_latitude: float,
+    max_latitude: float,
+    min_longitude: float,
+    max_longitude: float,
+    websocket
+):
+    """WebSocket endpoint for regional risk visualization."""
+    from app.db import async_session
+    async with async_session() as db:
+        await stream_regional_risk_visualization(
+            min_latitude, max_latitude, min_longitude, max_longitude, websocket, db
+        )
+
+
+@app.websocket(f"{settings.api_prefix}/ws/hazard/{{hazard_id}}")
+async def websocket_hazard_heatmap(hazard_id: int, websocket):
+    """WebSocket endpoint for hazard risk heatmap updates."""
+    from app.db import async_session
+    async with async_session() as db:
+        await stream_hazard_risk_heatmap(hazard_id, websocket, db)
 
 
 @app.get("/")
-async def root() -> dict:
-    """Root endpoint"""
+async def root():
+    """Root endpoint."""
     return {
-        "message": "GeoRisk API",
-        "version": settings.APP_VERSION,
-        "docs": f"{settings.API_V1_PREFIX}/docs"
+        "name": settings.app_name,
+        "version": settings.app_version,
+        "status": "running"
     }
+
+
+@app.get("/health")
+async def health_check():
+    """Health check endpoint."""
+    return {"status": "healthy"}

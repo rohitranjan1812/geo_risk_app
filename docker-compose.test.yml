@@ -1,0 +1,56 @@
+version: '3.8'
+
+# Test-specific docker-compose configuration
+# Runs tests and exits - useful for CI/CD pipelines
+
+services:
+  # PostgreSQL Database (same as production)
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: georisk_test
+      POSTGRES_PASSWORD: test_password
+      POSTGRES_DB: georisk_test_db
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U georisk_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - test_network
+
+  # Backend Tests
+  backend_test:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: postgresql://georisk_test:test_password@db:5432/georisk_test_db
+      SECRET_KEY: test-secret-key-for-testing-only
+      DEBUG: "true"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - test_network
+    command: >
+      sh -c "
+        echo '=== Running Backend Tests ===' &&
+        python init_db.py &&
+        pytest -v --cov=app --cov-report=term --cov-report=html &&
+        echo '=== Backend Tests Complete ==='
+      "
+
+  # Frontend Tests (if we had them configured)
+  # frontend_test:
+  #   build:
+  #     context: ./frontend
+  #     dockerfile: Dockerfile
+  #     target: builder
+  #   command: npm test
+  #   networks:
+  #     - test_network
+
+networks:
+  test_network:
+    driver: bridge

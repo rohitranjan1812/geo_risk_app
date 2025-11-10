@@ -1,5 +1,5 @@
-# Frontend Dockerfile - Multi-stage build
-FROM node:20-alpine AS builder
+# Multi-stage build for React frontend
+FROM node:18-alpine as builder
 
 WORKDIR /app
 
@@ -7,28 +7,34 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install dependencies
-RUN npm ci
+RUN npm ci --only=production
 
 # Copy source code
 COPY . .
 
-# Build application
+# Build the application
 RUN npm run build
 
-# Production stage
+# Production stage with nginx
 FROM nginx:alpine
 
-# Copy built files
-COPY --from=builder /app/dist /usr/share/nginx/html
-
-# Copy nginx configuration
+# Copy custom nginx config
 COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+# Copy built assets from builder
+COPY --from=builder /app/build /usr/share/nginx/html
+
+# Add healthcheck script
+RUN echo '#!/bin/sh' > /healthcheck.sh && \
+    echo 'curl -f http://localhost:80/ || exit 1' >> /healthcheck.sh && \
+    chmod +x /healthcheck.sh
 
 # Expose port
 EXPOSE 80
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD wget --quiet --tries=1 --spider http://localhost/ || exit 1
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+    CMD /healthcheck.sh
 
+# Start nginx
 CMD ["nginx", "-g", "daemon off;"]
